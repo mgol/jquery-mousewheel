@@ -2,46 +2,42 @@
 
 A [jQuery](https://jquery.com/) plugin that adds cross-browser mouse wheel support with delta normalization.
 
-In order to use the plugin, simply bind the `mousewheel` event to an element.
+In order to use the plugin, simply bind the `wheel` event to an element.
 
-The event object is updated with the normalized `deltaX` and `deltaY` properties.
-In addition, there is a new property on the event object called `deltaFactor`. Multiply
-the `deltaFactor` by `deltaX` or `deltaY` to get the scroll distance that the browser
-has reported.
+The plugin also exposes the deprecated `mousewheel` event. Note that the signs of `wheel` & `mousewheel` events are different; if you have existing code depending on `deltaY`, for example, and you want to migrate it to `wheel`, multiply `deltaY` by `-1` in your code. Handlers for the `mousewheel` event also get additional parameters passed: `delta`, `deltaX`, `deltaY`. The `wheel` handlers don't receive these parameters.
 
-Here is an example of using both the bind and helper method syntax:
+The event object is updated with the normalized `deltaX` and `deltaY` properties.  In addition, there is a new property on the event object called `deltaFactor`. Multiply  the `deltaFactor` by `deltaX` or `deltaY` to get the scroll distance that the browser  has reported.
+
+Example usage:
 
 ```js
-$( "#my_elem" ).on( "mousewheel", function( event ) {
-    console.log( event.deltaX, event.deltaY, event.deltaFactor );
+$( "#my_elem" ).on( "wheel", function( event ) {
+    console.log( event.deltaX, event.deltaY, event.deltaFactor ); // e.g. 4, 9, 2
+} );
+
+// Deprecated
+$( "#my_elem" ).on( "mousewheel", function( event, delta, deltaX, deltaY ) {
+    console.log( event.deltaX, event.deltaY, event.deltaFactor ); // e.g. -4, -9, 2
+    console.log( delta, deltaX, deltaY ); // e.g. -9, -4, -9
 } );
 ```
 
-The old behavior of adding three arguments (`delta`, `deltaX`, and `deltaY`) to the
-event handler is now deprecated and will be removed in later releases.
-
-
 ## The Deltas...
 
-The combination of browsers, operating systems, and devices offer a huge range of possible delta values. In fact if the user
-uses a trackpad and then a physical mouse wheel the delta values can differ wildly. This plugin normalizes those
-values so you get a whole number starting at +-1 and going up in increments of +-1 according to the force or
-acceleration that is used. This number has the potential to be in the thousands depending on the device.
+The combination of browsers, operating systems, and devices offer a huge range of possible delta values. In fact if the user uses a trackpad and then a physical mouse wheel the delta values can differ wildly. This plugin normalizes those values so you get a whole number starting at +-1 and going up in increments of +-1 according to the force or acceleration that is used. This number has the potential to be in the thousands depending on the device.
 
 ### Getting the scroll distance
 
-In some use-cases we prefer to have the normalized delta but in others we want to know how far the browser should
-scroll based on the users input. This can be done by multiplying the `deltaFactor` by the `deltaX` or `deltaY`
-event property to find the scroll distance the browser reported.
+In some use-cases we prefer to have the normalized delta but in others we want to know how far the browser should scroll based on the users input. This can be done by multiplying the `deltaFactor` by the `deltaX` or `deltaY` event property to find the scroll distance the browser reported.
 
-The `deltaFactor` property was added to the event object in 3.1.5 so that the actual reported delta value can be
+The `deltaFactor` property was added to the event object in `3.1.5` so that the actual reported delta value can be
 extracted. This is a non-standard property.
 
 ## Building the code in the repo & running tests
 
 ```sh
 git clone git@github.com:jquery/jquery-mousewheel.git
-cd jquery-mousewheel/
+cd jquery-mousewheel
 npm install
 npm test
 ```
