@@ -29,6 +29,7 @@ export default [
 				window: "readonly",
 				define: "readonly",
 				module: "readonly",
+				require: "readonly",
 				jQuery: "readonly"
 			}
 		}
