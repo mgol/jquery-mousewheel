@@ -13,10 +13,10 @@
 
 		// AMD. Register as an anonymous module.
 		define( [ "jquery" ], factory );
-	} else if ( typeof exports === "object" ) {
+	} else if ( typeof module === "object" && module.exports ) {
 
-		// Node/CommonJS style for Browserify
-		module.exports = factory;
+		// Node/CommonJS style
+		module.exports = factory( require( "jquery" ) );
 	} else {
 
 		// Browser globals
@@ -26,70 +26,102 @@
 	"use strict";
 
 	var nullLowestDeltaTimeout, lowestDelta,
-		slice  = Array.prototype.slice;
+		deprecatedWarningShown = false,
+		slice = Array.prototype.slice;
 
 	if ( $.event.fixHooks ) {
 		$.event.fixHooks.wheel = $.event.mouseHooks;
 	}
 
-	var special = $.event.special.mousewheel = {
-		version: "@VERSION",
+	$.event.special.wheel = getSpecialForEvent( {
+		type: "wheel",
+		multiplier: 1,
+		extraParams: false,
+		deprecated: false
+	} );
 
-		setup: function() {
-			this.addEventListener( "wheel", handler, false );
+	/**
+	 * @deprecated The `mousewheel` event is deprecated; use `wheel`.
+	 */
+	$.event.special.mousewheel = getSpecialForEvent( {
+		type: "mousewheel",
+		multiplier: -1,
+		extraParams: true,
+		deprecated: true
+	} );
 
-			// Store the line height and page height for this particular element
-			$.data( this, "mousewheel-line-height", special.getLineHeight( this ) );
-			$.data( this, "mousewheel-page-height", special.getPageHeight( this ) );
-		},
+	function getSpecialForEvent( options ) {
+		var special = {
+			version: "@VERSION",
 
-		teardown: function() {
-			this.removeEventListener( "wheel", handler, false );
+			setup: function() {
+				this.addEventListener( "wheel", options.eventHandler, false );
 
-			// Clean up the data we added to the element
-			$.removeData( this, "mousewheel-line-height" );
-			$.removeData( this, "mousewheel-page-height" );
-		},
+				// Store the line height and page height for this particular element
+				$.data( this, options.type + "-line-height", special.getLineHeight( this ) );
+				$.data( this, options.type + "-page-height", special.getPageHeight( this ) );
+			},
 
-		getLineHeight: function( elem ) {
-			var $elem = $( elem ),
-				$parent = $elem.offsetParent();
-			if ( !$parent.length ) {
-				$parent = $( "body" );
+			teardown: function() {
+				this.removeEventListener( "wheel", options.eventHandler, false );
+
+				// Clean up the data we added to the element
+				$.removeData( this, options.type + "-line-height" );
+				$.removeData( this, options.type + "-page-height" );
+			},
+
+			getLineHeight: function( elem ) {
+				var $elem = $( elem ),
+					$parent = $elem.offsetParent();
+				if ( !$parent.length ) {
+					$parent = $( "body" );
+				}
+				return parseInt( $parent.css( "fontSize" ), 10 ) ||
+					parseInt( $elem.css( "fontSize" ), 10 ) || 16;
+			},
+
+			getPageHeight: function( elem ) {
+				return $( elem ).height();
 			}
-			return parseInt( $parent.css( "fontSize" ), 10 ) ||
-				parseInt( $elem.css( "fontSize" ), 10 ) || 16;
-		},
+		};
 
-		getPageHeight: function( elem ) {
-			return $( elem ).height();
-		},
+		options.eventHandler = getHandler( options );
 
-		settings: {
-			normalizeOffset: true  // calls getBoundingClientRect for each event
-		}
-	};
+		return special;
+	}
 
-	function handler( origEvent ) {
-		var args = slice.call( arguments, 1 ),
+	function getHandler( options ) {
+		return function( origEvent ) {
+			return handler.call( this, origEvent, options );
+		};
+	}
+
+	function handler( origEvent, options ) {
+		var lineHeight, pageHeight,
+			type = options.type,
+			multiplier = options.multiplier,
+			extraParams = options.extraParams,
+			deprecated = options.deprecated,
+			args = slice.call( arguments, 1 ),
 			delta = 0,
 			deltaX = 0,
 			deltaY = 0,
 			absDelta = 0,
 			event = $.event.fix( origEvent );
 
-		event.type = "mousewheel";
-
-		// New school wheel delta (wheel event)
-		if ( "deltaY" in origEvent ) {
-			deltaY = origEvent.deltaY * -1;
-			delta  = deltaY;
+		if ( deprecated && !deprecatedWarningShown ) {
+			window.console.warn(
+				"jQuery Mousewheel: the mousewheel event is deprecated; use wheel" );
 		}
-		if ( "deltaX" in origEvent ) {
-			deltaX = origEvent.deltaX;
-			if ( deltaY === 0 ) {
-				delta  = deltaX * -1;
-			}
+
+		event.type = type;
+
+		deltaY = origEvent.deltaY * multiplier;
+		delta = deltaY;
+
+		deltaX = origEvent.deltaX;
+		if ( deltaY === 0 ) {
+			delta = deltaX * multiplier;
 		}
 
 		// No change actually happened, no reason to go any further
@@ -103,13 +135,13 @@
 		//   * deltaMode 1 is by lines
 		//   * deltaMode 2 is by pages
 		if ( origEvent.deltaMode === 1 ) {
-			var lineHeight = $.data( this, "mousewheel-line-height" );
-			delta  *= lineHeight;
+			lineHeight = $.data( this, type + "-line-height" );
+			delta *= lineHeight;
 			deltaY *= lineHeight;
 			deltaX *= lineHeight;
 		} else if ( origEvent.deltaMode === 2 ) {
-			var pageHeight = $.data( this, "mousewheel-page-height" );
-			delta  *= pageHeight;
+			pageHeight = $.data( this, type + "-page-height" );
+			delta *= pageHeight;
 			deltaY *= pageHeight;
 			deltaX *= pageHeight;
 		}
@@ -122,34 +154,35 @@
 		}
 
 		// Get a whole, normalized value for the deltas
-		delta  = Math[ delta  >= 1 ? "floor" : "ceil" ]( delta  / lowestDelta );
-		deltaX = Math[ deltaX >= 1 ? "floor" : "ceil" ]( deltaX / lowestDelta );
-		deltaY = Math[ deltaY >= 1 ? "floor" : "ceil" ]( deltaY / lowestDelta );
-
-		// Normalise offsetX and offsetY properties
-		if ( special.settings.normalizeOffset && this.getBoundingClientRect ) {
-			var boundingRect = this.getBoundingClientRect();
-			event.offsetX = event.clientX - boundingRect.left;
-			event.offsetY = event.clientY - boundingRect.top;
-		}
+		delta = Math[
+			multiplier * Math.abs( delta ) >= 1 ? "floor" : "ceil"
+		]( delta / lowestDelta );
+		deltaX = Math[
+			multiplier * Math.abs( deltaX ) >= 1 ? "floor" : "ceil"
+		]( deltaX / lowestDelta );
+		deltaY = Math[
+			multiplier * Math.abs( deltaY ) >= 1 ? "floor" : "ceil"
+		]( deltaY / lowestDelta );
 
 		// Add information to the event object
 		event.deltaX = deltaX;
 		event.deltaY = deltaY;
 		event.deltaFactor = lowestDelta;
 
-		// Go ahead and set deltaMode to 0 since we converted to pixels
+		// Go ahead and set deltaMode to 0 since we converted to pixels.
 		// Although this is a little odd since we overwrite the deltaX/Y
 		// properties with normalized deltas.
 		event.deltaMode = 0;
 
-		// Add event and delta to the front of the arguments
-		args.unshift( event, delta, deltaX, deltaY );
+		// Add event to the front of the arguments, optionally followed by params.
+		if ( extraParams ) {
+			args.unshift( delta, deltaX, deltaY );
+		}
+		args.unshift( event );
 
-		// Clear out lowestDelta after sometime to better
-		// handle multiple device types that give different
-		// a different lowestDelta
-		// Ex: trackpad = 3 and mouse wheel = 120
+		// Clear out lowestDelta after sometime to better handle multiple
+		// device types that give a different lowestDelta.
+		// E.g.: trackpad = 3 and mouse wheel = 120
 		window.clearTimeout( nullLowestDeltaTimeout );
 		nullLowestDeltaTimeout = window.setTimeout( function() {
 			lowestDelta = null;
